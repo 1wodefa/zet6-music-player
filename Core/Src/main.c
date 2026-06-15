@@ -212,55 +212,33 @@ int main(void)
           }
       }
 
-      // ========== B. 诊断模式: 阻塞等待0x48回复 ==========
+      // ========== B. 正式播放音乐 ==========
       if(mp3_need_play == 1)
       {
           mp3_need_play = 0;
 
-          printf("\r\n[诊断1] 指定TF卡设备, 等1.5s...\r\n");
+          printf("\r\n========================================\r\n");
+          printf("  开始播放流程\r\n");
+
+          printf("[CMD] 1. 指定TF卡设备...\r\n");
           MP3_SendCmd(0x09, 0x00, 0x0002);
-          HAL_Delay(1500);
+          HAL_Delay(1000);
 
-          printf("[诊断2] 查询TF卡曲目总数 (0x48)...\r\n");
+          printf("[CMD] 2. 设置音量=25...\r\n");
+          MP3_SendCmd(0x06, 0x00, 20);
+          HAL_Delay(100);
 
-          // 发前清理
+          printf("[CMD] 3. 播放第1首!\r\n");
+          MP3_SendCmd(0x03, 0x00, 0x0001);
+
+          printf("========================================\r\n");
+          printf("[INFO] 音乐应该响起了!\r\n");
+          printf("========================================\r\n");
+
+          // 清理接收通道
           HAL_UART_AbortReceive(&huart1);
           __HAL_UART_CLEAR_OREFLAG(&huart1);
           __HAL_UART_CLEAR_IDLEFLAG(&huart1);
-          mp3_rx_flag = 0;
-          HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
-
-          // 发送查询
-          MP3_SendCmd(0x48, 0x00, 0x0000);
-
-          // 死等回复, 最多1秒
-          {
-              uint32_t t0 = HAL_GetTick();
-              while(mp3_rx_flag == 0 && (HAL_GetTick() - t0 < 1000)) {}
-          }
-
-          if(mp3_rx_flag == 1)
-          {
-              uint16_t cnt = ((uint16_t)mp3_rx_buffer[5] << 8) | mp3_rx_buffer[6];
-              printf("\r\n========================================\r\n");
-              printf("[证据] 0x48回复: ");
-              for(int i = 0; i < mp3_rx_len; i++)
-                  printf("%02X ", mp3_rx_buffer[i]);
-              printf("\r\n");
-              printf("[证据] 模块认为TF卡里有 %d 首歌!\r\n", cnt);
-
-              if(cnt == 0)
-                  printf("[结论] 模块读不到卡! 重新FAT32格式化, 分配单元32KB, 或换小容量旧卡\r\n");
-              else
-                  printf("[结论] 卡OK! 但文件格式不支持, 换纯正MP3或WAV文件\r\n");
-              printf("========================================\r\n");
-          }
-          else
-          {
-              printf("[糟糕] 模块1秒内没回复0x48!\r\n");
-          }
-
-          // 恢复正常接收
           mp3_rx_flag = 0;
           HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
       }

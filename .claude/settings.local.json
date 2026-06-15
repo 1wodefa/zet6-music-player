@@ -3,7 +3,11 @@
     "allow": [
       "Bash(git init *)",
       "Bash(gh auth *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh repo *)",
+      "Bash(git remote *)",
+      "Bash(git push *)"
     ]
   }
 }
