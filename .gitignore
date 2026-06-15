@@ -1,0 +1,27 @@
+# STM32 CubeMX / MDK-ARM 编译产物
+MDK-ARM/RTE/
+MDK-ARM/DebugConfig/
+MDK-ARM/*.uvguix.*
+MDK-ARM/*.uvoptx
+MDK-ARM/*.scvd
+*.o
+*.d
+*.crf
+*.lnp
+*.axf
+*.htm
+*.dep
+*.iex
+*.orig
+*.lst
+*.map
+*.build_log.htm
+*.hex
+
+# CubeMX temp
+.mxproject
+
+# OS junk
+Thumbs.db
+.DS_Store
+Desktop.ini
