@@ -20,6 +20,10 @@
 #include "mp3dec.h"
 #include "mp3common.h"
 
+/* 数字音量: VOL_NUM / (1<<VOL_SHIFT) = 3/4 = 75%, 防削波失真 */
+#define VOL_NUM   3
+#define VOL_SHIFT 2
+
 
 /************************************************************************************/
 /*
@@ -36,12 +40,14 @@ void Convert_Stereo(short *buffer, int nSamps)
 {
 	int i,j,k;
 	int nBlocks = nSamps / 64;  /* MPEG1: 2304/64=36, MPEG2: 1152/64=18 */
+	int16_t s;
 	for(i=0; i<nBlocks; i++)
 	{
 		for(j=31+i*64, k=j+32; j>=0+i*64; j--, k-=2)
 		{
-			buffer[k]=buffer[j];
-			buffer[k-1]=buffer[j];
+			s = (int16_t)(((int32_t)buffer[j] * VOL_NUM) >> VOL_SHIFT);
+			buffer[k]   = s;
+			buffer[k-1] = s;
 		}
 	}
 }
@@ -59,10 +65,12 @@ void Convert_Stereo(short *buffer, int nSamps)
 void Convert_Mono(short *buffer, int nSamps)
 {
 	int i;
+	int16_t s;
 	for (i = nSamps - 1; i >= 0; i--)
 	{
-		buffer[i * 2] = buffer[i];
-		buffer[i * 2 + 1] = buffer[i];
+		s = (int16_t)(((int32_t)buffer[i] * VOL_NUM) >> VOL_SHIFT);
+		buffer[i * 2]     = s;
+		buffer[i * 2 + 1] = s;
 	}
 }
 
