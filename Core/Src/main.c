@@ -18,7 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dma.h"
+#include "fatfs.h"
+#include "sdio.h"
 #include "usart.h"
 #include "gpio.h"
 #include "fsmc.h"
@@ -46,13 +47,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-#define MP3_RX_MAX_LEN 15  // ç¨å¾®å®šä¹‰å¤§ä¸€ç‚¹é˜²æ­¢æº¢å‡º
-uint8_t mp3_rx_buffer[MP3_RX_MAX_LEN];  // DMA æ¥æ”¶å¤§æœ¬è¥
-volatile uint8_t mp3_rx_flag = 0;       // æ¥æ”¶å®Œæˆæ ‡å¿—ä½
-volatile uint8_t mp3_rx_len = 0;        // å®é™…æ¥æ”¶åˆ°çš„é•¿åº¦
-uint32_t mp3_last_rx_tick = 0;          // ä¸Šæ¬¡æ”¶åˆ°æ•°æ®çš„æ—¶é—´æˆ³
-uint8_t  mp3_init_ok = 0;              // æ¨¡å—åˆå§‹åŒ–å®Œæˆæ ‡å¿—
-uint8_t  mp3_need_play = 0;            // éœ€è¦å‘æ’­æ”¾æŒ‡ä»¤çš„æ ‡å¿—
+
+    FATFS fs;           // FatFsÎÄ¼şÏµÍ³½á¹¹Ìå¶ÔÏó
+    FIL file;           // ÎÄ¼ş²Ù×÷¶ÔÏó
+    char test_buf[64];  // Êı¾İ¶ÁÈ¡»º´æÇø
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,60 +62,9 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// ==================== YX080 MP3-TF-16P åè®®å‡½æ•° ====================
-// æ‰‹å†Œ: å¸§æ ¼å¼ $S VER Len CMD FB para1 para2 checksum $O
-//       èµ·å§‹ 7E | ç‰ˆæœ¬ FF | é•¿åº¦ 06 | å‘½ä»¤ | åé¦ˆ | å‚æ•°H | å‚æ•°L | æ ¡éªŒ2B | ç»“æŸ EF
-
-// è®¡ç®—æ ¡éªŒå’Œ (ç´¯åŠ å’Œå–åï¼Œä¸è®¡èµ·å§‹ä½$)
-static uint16_t MP3_CalcChecksum(uint8_t *data, uint8_t len)
+uint8_t BSP_SD_IsDetected(void)
 {
-    uint16_t sum = 0;
-    for(uint8_t i = 0; i < len; i++) sum += data[i];
-    return (uint16_t)(-sum);
-}
-
-// å‘é€æŒ‡ä»¤åˆ° MP3-TF-16P æ¨¡å— (çº¯å‘é€, ä¸åŠ¨DMA)
-static void MP3_SendCmd(uint8_t cmd, uint8_t feedback, uint16_t param)
-{
-    uint8_t buf[10];
-    uint16_t cs;
-    buf[0] = 0x7E;
-    buf[1] = 0xFF;
-    buf[2] = 0x06;
-    buf[3] = cmd;
-    buf[4] = feedback;
-    buf[5] = (param >> 8) & 0xFF;
-    buf[6] = param & 0xFF;
-    cs = MP3_CalcChecksum(&buf[1], 6);
-    buf[7] = (cs >> 8) & 0xFF;
-    buf[8] = cs & 0xFF;
-    buf[9] = 0xEF;
-    HAL_UART_Transmit(&huart1, buf, 10, HAL_MAX_DELAY);
-}
-
-// è§£ææ”¶åˆ°çš„æ•°æ®åŒ…ç±»å‹
-static void MP3_ParsePacket(uint8_t *buf, uint8_t len)
-{
-    if(len < 10 || buf[0] != 0x7E || buf[9] != 0xEF)
-    {
-        printf("  [WARN] Invalid packet format!\r\n");
-        return;
-    }
-    uint8_t cmd = buf[3];
-    switch(cmd)
-    {
-        case 0x3F: printf("  -> Module Init: device=0x%02X\r\n", buf[6]); break;
-        case 0x3A: printf("  -> Device Inserted: type=0x%02X\r\n", buf[6]); break;
-        case 0x3B: printf("  -> Device Removed: type=0x%02X\r\n", buf[6]); break;
-        case 0x3C: printf("  -> USB track #%d finished\r\n", buf[6]); break;
-        case 0x3D: printf("  -> TF track #%d finished\r\n", buf[6]); break;
-        case 0x3E: printf("  -> FLASH track #%d finished\r\n", buf[6]); break;
-        case 0x40: printf("  -> ERROR: code=0x%02X\r\n", buf[6]); break;
-        case 0x41: printf("  -> ACK: cmd=0x%02X OK\r\n", buf[6]); break;
-        case 0x42: printf("  -> Status: 0x%02X\r\n", buf[6]); break;
-        case 0x48: printf("  -> TFå¡æ›²ç›®æ€»æ•° = %d\r\n", buf[6]); break;
-        default:   printf("  -> CMD=0x%02X param=0x%02X\r\n", cmd, buf[6]); break;
-    }
+  return SD_PRESENT;
 }
 /* USER CODE END 0 */
 
@@ -149,109 +97,65 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_FSMC_Init();
+  MX_SDIO_SD_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  printf("========================================\r\n");
-  printf("  ZET6 MP3 Player (YX080 MP3-TF-16P)\r\n");
-  printf("========================================\r\n");
-  printf("USART2 -> printf debug (115200)\r\n");
-  printf("USART1 -> MP3 module (9600)\r\n");
-  printf("Waiting for module init msg...\r\n");
-  printf("(Make sure TF card is inserted!)\r\n");
-  printf("========================================\r\n");
 
-  // 1. å¼€å¯ USART1 çš„ç©ºé—²ä¸­æ–­ (IDLE)
-  __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
+    FRESULT res;        // ´æ´¢FatFsº¯ÊıÖ´ĞĞ·µ»Ø×´Ì¬Âë
+    UINT br;            // ¼ÇÂ¼f_readº¯ÊıÊµ¼Ê¶ÁÈ¡µ½µÄ×Ö½ÚÊı
+    
+    printf("========================================\r\n");
+    printf("STM32F103ZET6 SDIO + FatFs ¹ÒÔØ²âÊÔ\r\n");
+    printf("========================================\r\n");
 
-  // 2. å¯åŠ¨ DMA æ¥æ”¶
-  HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
+    // 1. ¹ÒÔØSD¿¨·ÖÇø£¬0´ú±íÄ¬ÈÏÇı¶¯Æ÷£¬²ÎÊı1±íÊ¾Á¢¼´Ö´ĞĞ¹ÒÔØ
+    res = f_mount(&fs, "0:/", 1);
+    if(res == FR_OK)
+    {
+    printf("[OK] ÄÚ´æ¿¨¹ÒÔØ³É¹¦£¡ÎÄ¼şÏµÍ³×¼±¸¾ÍĞ÷¡£\r\n");
+//    // µ÷ÓÃ HAL ¿âµ×²ãµÄÇĞ»»Ö¸Áî
+//    if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) == HAL_OK)
+//    {
+//        printf("[OK] ³É¹¦Æğ·É£¡ÒÑÇĞÈë 4-Bit ÂúÑªÄ£Ê½£¡\r\n");
+//    } else {
+//        printf("[WARN] ÇĞ»» 4-Bit Ê§°Ü£¬¼ÌĞøÊ¹ÓÃ 1-Bit ¹¶×¡¡£\r\n");
+//    }
 
-  // 3. è®°å½•å¯åŠ¨æ—¶é—´
-  mp3_last_rx_tick = HAL_GetTick();
+    // 2. ´ò¿ªSD¿¨¸ùÄ¿Â¼ÏÂµÄtest.txtÎÄ¼ş£¬Ê¹ÓÃÖ»¶ÁÄ£Ê½£¬ĞèÌáÇ°ÔÚSD¿¨¸ùÄ¿Â¼´´½¨¸ÃÎÄ¼ş
+    res = f_open(&file, "0:/test.txt", FA_READ);
+    if(res == FR_OK)
+    {
+        printf("[OK] ³É¹¦´ò¿ª test.txt ÎÄ¼ş£¡´óĞ¡: %ld ×Ö½Ú\r\n", f_size(&file));
+        
+        // 3. ¶ÁÈ¡ÎÄ¼şÇ°60¸ö×Ö½ÚÊı¾İ
+        f_read(&file, test_buf, sizeof(test_buf)-1, &br);
+        test_buf[br] = '\0'; // ÔÚ¶ÁÈ¡Êı¾İÄ©Î²Ìí¼Ó×Ö·û´®½áÊø·û
+        
+        printf("[DATA] ÎÄ¼şÄÚÈİÇ°×º: %s\r\n", test_buf);
+        
+        // 4. ¹Ø±ÕÒÑ´ò¿ªµÄÎÄ¼ş£¬ÊÍ·Å×ÊÔ´
+        f_close(&file);
+    }
+    else
+    {
+        printf("[WARN] ´ò¿ª test.txt Ê§°Ü£¬´íÎóÂë: %d (Çë¼ì²é¿¨¸ùÄ¿Â¼ÏÂÊÇ·ñÓĞ¸ÃÎÄ¼ş)\r\n", res);
+        printf("[INFO] ËäÈ»´ò²»¿ªÎÄ¼ş£¬µ«¹ÒÔØ³É¹¦ËµÃ÷µ×²ãSDIOÊ±ĞòÒÑ¾­ÊÇºÃµÄ£¡\r\n");
+    }
+    }
+    else
+    {
+    printf("[ERR] ÄÚ´æ¿¨¹ÒÔØÊ§°Ü£¡´íÎóÂë: %d\r\n", res);
+    printf("[ÅÅ²éÖ¸ÄÏ] 1. ¿¨ÊÇ·ñ²å½ô£¿ 2. ÊÇ·ñ¸ñÊ½»¯Îª FAT32£¿ 3. ¼ì²é SDIO Òı½ÅÊÇ·ñ¶ÌÂ·£¿\r\n");
+    }
+    printf("========================================\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      // ========== A. å¤„ç†æ”¶åˆ°çš„æ•°æ® ==========
-      if(mp3_rx_flag == 1)
-      {
-          if(mp3_rx_len == 0)
-          {
-              // 0å­—èŠ‚æ˜¯å¹²æ‰°, è·³è¿‡, é™é»˜é‡å¯DMA
-              mp3_rx_flag = 0;
-              HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
-          }
-          else
-          {
-              printf("[RX] %då­—èŠ‚: ", mp3_rx_len);
-              for(int i = 0; i < mp3_rx_len; i++)
-                  printf("%02X ", mp3_rx_buffer[i]);
-              printf("\r\n");
-
-              MP3_ParsePacket(mp3_rx_buffer, mp3_rx_len);
-
-              // é¦–æ¬¡æ”¶åˆ°åˆæ³•åº”ç­” â†’ æ¨¡å—é€šä¿¡OK
-              if(mp3_init_ok == 0 && mp3_rx_len >= 10
-                 && mp3_rx_buffer[0] == 0x7E && mp3_rx_buffer[9] == 0xEF)
-              {
-                  mp3_init_ok = 1;
-                  mp3_need_play = 1;  // é€šçŸ¥å¤–é¢å‘æ’­æ”¾æŒ‡ä»¤
-                  printf("========================================\r\n");
-                  printf("[OK] MP3æ¨¡å—é€šä¿¡æˆåŠŸ!\r\n");
-                  printf("========================================\r\n");
-              }
-
-              mp3_rx_flag = 0;
-              mp3_last_rx_tick = HAL_GetTick();
-              HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
-          }
-      }
-
-      // ========== B. æ­£å¼æ’­æ”¾éŸ³ä¹ ==========
-      if(mp3_need_play == 1)
-      {
-          mp3_need_play = 0;
-
-          printf("\r\n========================================\r\n");
-          printf("  å¼€å§‹æ’­æ”¾æµç¨‹\r\n");
-
-          printf("[CMD] 1. æŒ‡å®šTFå¡è®¾å¤‡...\r\n");
-          MP3_SendCmd(0x09, 0x00, 0x0002);
-          HAL_Delay(1000);
-
-          printf("[CMD] 2. è®¾ç½®éŸ³é‡=25...\r\n");
-          MP3_SendCmd(0x06, 0x00, 20);
-          HAL_Delay(100);
-
-          printf("[CMD] 3. æ’­æ”¾ç¬¬1é¦–!\r\n");
-          MP3_SendCmd(0x03, 0x00, 0x0001);
-
-          printf("========================================\r\n");
-          printf("[INFO] éŸ³ä¹åº”è¯¥å“èµ·äº†!\r\n");
-          printf("========================================\r\n");
-
-          // æ¸…ç†æ¥æ”¶é€šé“
-          HAL_UART_AbortReceive(&huart1);
-          __HAL_UART_CLEAR_OREFLAG(&huart1);
-          __HAL_UART_CLEAR_IDLEFLAG(&huart1);
-          mp3_rx_flag = 0;
-          HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
-      }
-
-      // ========== C. è¶…æ—¶æ¢æµ‹ (3ç§’æ— æ•°æ®) ==========
-      if(mp3_init_ok == 0 && (HAL_GetTick() - mp3_last_rx_tick > 3000))
-      {
-          printf("\r\n[!!!] MP3æ¨¡å—3ç§’æ— åº”ç­”! æ£€æŸ¥: TFå¡? æ¥çº¿?\r\n");
-          printf("[æ¢æµ‹] å‘é€çŠ¶æ€æŸ¥è¯¢...\r\n");
-          MP3_SendCmd(0x42, 0x00, 0x0000);
-          mp3_last_rx_tick = HAL_GetTick();
-      }
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

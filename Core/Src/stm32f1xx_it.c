@@ -55,13 +55,9 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern DMA_HandleTypeDef hdma_usart1_rx;
-extern UART_HandleTypeDef huart1;
+
 /* USER CODE BEGIN EV */
-extern uint8_t mp3_rx_buffer[];
-extern volatile uint8_t mp3_rx_flag;
-extern volatile uint8_t mp3_rx_len;
-#define MP3_RX_MAX_LEN 15
+
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -201,50 +197,6 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32f1xx.s).                    */
 /******************************************************************************/
-
-/**
-  * @brief This function handles DMA1 channel5 global interrupt.
-  */
-void DMA1_Channel5_IRQHandler(void)
-{
-  /* USER CODE BEGIN DMA1_Channel5_IRQn 0 */
-
-  /* USER CODE END DMA1_Channel5_IRQn 0 */
-  HAL_DMA_IRQHandler(&hdma_usart1_rx);
-  /* USER CODE BEGIN DMA1_Channel5_IRQn 1 */
-
-  /* USER CODE END DMA1_Channel5_IRQn 1 */
-}
-
-/**
-  * @brief This function handles USART1 global interrupt.
-  */
-void USART1_IRQHandler(void)
-{
-  /* USER CODE BEGIN USART1_IRQn 0 */
-  // 处理溢出错误(ORE), 防止硬件死锁
-  if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_ORE) != RESET)
-  {
-      __HAL_UART_CLEAR_OREFLAG(&huart1);
-      HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
-  }
-  // 处理空闲中断(IDLE)
-  if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_IDLE) != RESET)
-  {
-      __HAL_UART_CLEAR_IDLEFLAG(&huart1);
-      HAL_UART_DMAStop(&huart1);
-      mp3_rx_len = MP3_RX_MAX_LEN - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-      if(mp3_rx_len > 0)
-          mp3_rx_flag = 1;
-      else
-          HAL_UART_Receive_DMA(&huart1, mp3_rx_buffer, MP3_RX_MAX_LEN);
-  }
-  /* USER CODE END USART1_IRQn 0 */
-  HAL_UART_IRQHandler(&huart1);
-  /* USER CODE BEGIN USART1_IRQn 1 */
-
-  /* USER CODE END USART1_IRQn 1 */
-}
 
 /* USER CODE BEGIN 1 */
 
