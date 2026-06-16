@@ -40,12 +40,12 @@ void Convert_Stereo(short *buffer, int nSamps)
 {
 	int i,j,k;
 	int nBlocks = nSamps / 64;  /* MPEG1: 2304/64=36, MPEG2: 1152/64=18 */
-	int16_t s;
+	short s;
 	for(i=0; i<nBlocks; i++)
 	{
 		for(j=31+i*64, k=j+32; j>=0+i*64; j--, k-=2)
 		{
-			s = (int16_t)(((int32_t)buffer[j] * VOL_NUM) >> VOL_SHIFT);
+			s = (short)(((int)buffer[j] * VOL_NUM) >> VOL_SHIFT);
 			buffer[k]   = s;
 			buffer[k-1] = s;
 		}
@@ -65,10 +65,10 @@ void Convert_Stereo(short *buffer, int nSamps)
 void Convert_Mono(short *buffer, int nSamps)
 {
 	int i;
-	int16_t s;
+	short s;
 	for (i = nSamps - 1; i >= 0; i--)
 	{
-		s = (int16_t)(((int32_t)buffer[i] * VOL_NUM) >> VOL_SHIFT);
+		s = (short)(((int)buffer[i] * VOL_NUM) >> VOL_SHIFT);
 		buffer[i * 2]     = s;
 		buffer[i * 2 + 1] = s;
 	}
