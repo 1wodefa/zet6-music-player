@@ -170,9 +170,9 @@ int main(void)
     {
         printf("[OK] SD卡挂载成功！\r\n");
         
-        if(f_open(&mp3File, "0:/1.mp3", FA_READ) == FR_OK) 
+        if(f_open(&mp3File, "0:/2.mp3", FA_READ) == FR_OK) 
         {
-            printf("[OK] 成功打开 1.mp3，准备解码...\r\n");
+            printf("[OK] 成功打开 2.mp3，准备解码...\r\n");
             
             mp3Decoder = MP3InitDecoder();
             if(mp3Decoder == 0) {
