@@ -170,9 +170,9 @@ int main(void)
     {
         printf("[OK] SD卡挂载成功！\r\n");
         
-        if(f_open(&mp3File, "0:/2.mp3", FA_READ) == FR_OK) 
+        if(f_open(&mp3File, "0:/1.mp3", FA_READ) == FR_OK) 
         {
-            printf("[OK] 成功打开 2.mp3，准备解码...\r\n");
+            printf("[OK] 成功打开 1.mp3，准备解码...\r\n");
             
             mp3Decoder = MP3InitDecoder();
             if(mp3Decoder == 0) {
@@ -284,8 +284,11 @@ int main(void)
       }
 
       // =================================================================
-      // 填补 Buffer A (前半段)
+      // DMA 回调处理: 两个标志可能同时置位(若 f_read 耗时过长),
+      // 必须在本轮循环内全部处理, 否则 DMA 重放旧数据 -> 噪音
       // =================================================================
+
+      // 填补 Buffer A (前半段)
       if (dmaHalfCplt)
       {
           dmaHalfCplt = 0;
@@ -301,13 +304,17 @@ int main(void)
                   } else if (mp3Info.nChans == 1) {
                       Convert_Mono(i2sDmaBuf, mp3Info.outputSamps);
                   }
+              } else {
+                  /* 解码失败, 零填充防噪音 */
+                  memset(i2sDmaBuf, 0, 2304 * sizeof(int16_t));
               }
+          } else {
+              /* 未找到同步字, 零填充 */
+              memset(i2sDmaBuf, 0, 2304 * sizeof(int16_t));
           }
       }
 
-      // =================================================================
       // 填补 Buffer B (后半段)
-      // =================================================================
       if (dmaFullCplt)
       {
           dmaFullCplt = 0;
@@ -323,7 +330,11 @@ int main(void)
                   } else if (mp3Info.nChans == 1) {
                       Convert_Mono(i2sDmaBuf + 2304, mp3Info.outputSamps);
                   }
+              } else {
+                  memset(i2sDmaBuf + 2304, 0, 2304 * sizeof(int16_t));
               }
+          } else {
+              memset(i2sDmaBuf + 2304, 0, 2304 * sizeof(int16_t));
           }
       }
       
